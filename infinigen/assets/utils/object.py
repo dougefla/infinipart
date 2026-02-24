@@ -840,6 +840,12 @@ def save_whole_object_normalized(object, path=None, idx="unknown", name=None, us
     links = {}
     joints= []
     origins["world"] = (0, 0, 0)
+    # Save per-part origins (centroids before centering) for downstream processing
+    origins_path = os.path.join(path, idx, "origins.json")
+    _origins_ser = {str(k): list(v) for k, v in origins.items()}
+    with open(origins_path, "w") as _f:
+        json.dump(_origins_ser, _f, indent=2)
+    print(f"[origins] Saved {len(origins)} origins to {origins_path}")
     print(robot_tree)
 
     root = urdfpy.Link("l_world", visuals=None, collisions=None, inertial=None)
@@ -1291,6 +1297,8 @@ def export_curr_scene(
     individual_export=True,
     before_export=None
 ) -> Path:
+    import time as _time
+    _t_export_start = _time.time()
     global saved_obj, saved_objs
     #wait = input("Press Enter to continue.")
     export_usd = format in ["usda", "usdc"]
@@ -1299,9 +1307,12 @@ def export_curr_scene(
     export_folder.mkdir(exist_ok=True)
     export_file = export_folder / output_folder.with_suffix(f".{format}").name
 
+    _t0 = _time.time()
     export.remove_obj_parents()
     #export.delete_objects()
     export.triangulate_meshes()
+    _t_prep = _time.time() - _t0
+    print(f"[PROFILE] export_curr_scene prep (remove_parents+triangulate): {_t_prep:.1f}s")
     #export.rename_all_meshes()
 
     scatter_cols = []
@@ -1325,6 +1336,7 @@ def export_curr_scene(
 
     collection_views, obj_views = export.update_visibility()
 
+    _t0 = _time.time()
     for obj in bpy.data.objects:
         if obj.type != "MESH" or obj not in list(bpy.context.view_layer.objects):
             continue
@@ -1333,6 +1345,8 @@ def export_curr_scene(
         else:
             export.realizeInstances(obj)
             export.apply_all_modifiers(obj)
+    _t_modifiers = _time.time() - _t0
+    print(f"[PROFILE] export_curr_scene apply_modifiers: {_t_modifiers:.1f}s")
 
     bpy.context.scene.render.engine = "CYCLES"
     bpy.context.scene.cycles.device = "GPU"
@@ -1342,6 +1356,7 @@ def export_curr_scene(
     bpy.context.scene.cycles.tile_y = image_res
 
     # iterate through all objects and bake them
+    _t0 = _time.time()
     export.bake_scene(
         folderPath=export_folder / "textures",
         image_res=image_res,
@@ -1349,6 +1364,8 @@ def export_curr_scene(
         export_usd=export_usd,
         objs=objs,
     )
+    _t_bake = _time.time() - _t0
+    print(f"[PROFILE] export_curr_scene bake_scene total: {_t_bake:.1f}s")
 
     for collection, status in collection_views.items():
         collection.hide_render = status
@@ -1362,17 +1379,8 @@ def export_curr_scene(
         obj.hide_viewport = obj.hide_render
 
     if individual_export:
-        #bpy.ops.object.select_all(action="SELECT")
-        #bpy.ops.object.location_clear()  # send all objects to (0,0,0)
-        #bpy.ops.object.select_all(action="DESELECT")
+        _t0 = _time.time()
         for obj in objs:
-            # if (
-            #     obj.type != "MESH"
-            #     or obj.hide_render
-            #     or len(obj.data.vertices) == 0
-            #     or obj not in list(bpy.context.view_layer.objects)
-            # ):
-            #     continue
             butil.select_none()
             export_subfolder = export_folder / obj.name
             export_subfolder.mkdir(exist_ok=True)
@@ -1388,7 +1396,10 @@ def export_curr_scene(
             saved_obj = obj.copy()
             #bpy.context.scene.objects.active = obj
             #obj.select_set(False)
-        #wait = input("Press Enter to continue.")
+        _t_obj_export = _time.time() - _t0
+        print(f"[PROFILE] export_curr_scene obj_export: {_t_obj_export:.1f}s")
+        _t_total_export = _time.time() - _t_export_start
+        print(f"[PROFILE] export_curr_scene TOTAL: {_t_total_export:.1f}s")
         #shutil.rmtree(export_folder / "textures")
         return export_file
 from infinigen.core import tags as t

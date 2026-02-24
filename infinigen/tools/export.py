@@ -8,6 +8,7 @@ import logging
 import math
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import bpy
@@ -644,8 +645,15 @@ def set_center_of_mass():
 
 
 def bake_object(obj, dest, img_size, export_usd):
+    _t_bake_start = time.time()
+    n_verts = len(obj.data.vertices) if obj.data else 0
+    n_faces = len(obj.data.polygons) if obj.data else 0
+    n_mats = len(obj.material_slots)
+
+    _t0 = time.time()
     if not uv_unwrap(obj):
         return
+    _t_uv = time.time() - _t0
 
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -657,19 +665,39 @@ def bake_object(obj, dest, img_size, export_usd):
                 mat.copy()
             )  # we duplicate in the case of distinct meshes sharing materials
 
+    _t0 = time.time()
     process_glass_materials(obj, export_usd)
+    _t_glass = time.time() - _t0
 
+    _t0 = time.time()
     bake_metal(obj, dest, img_size, export_usd)
+    _t_metal = time.time() - _t0
+
+    _t0 = time.time()
     bake_normals(obj, dest, img_size, export_usd)
+    _t_normals = time.time() - _t0
 
+    _t0 = time.time()
     paramDict = process_interfering_params(obj)
+    _t_interfering = time.time() - _t0
 
+    _t_bake_passes = {}
     for bake_type in BAKE_TYPES:
+        _t0 = time.time()
         bake_pass(obj, dest, img_size, bake_type, export_usd)
+        _t_bake_passes[bake_type] = time.time() - _t0
 
+    _t0 = time.time()
     apply_baked_tex(obj, paramDict)
+    _t_apply = time.time() - _t0
 
     obj.select_set(False)
+
+    _t_total = time.time() - _t_bake_start
+    _passes_str = " ".join(f"{k}={v:.1f}s" for k, v in _t_bake_passes.items())
+    print(f"[PROFILE] bake_object({obj.name}) verts={n_verts} faces={n_faces} mats={n_mats} "
+          f"total={_t_total:.1f}s uv={_t_uv:.1f}s metal={_t_metal:.1f}s normals={_t_normals:.1f}s "
+          f"{_passes_str} apply={_t_apply:.1f}s")
 
 
 def bake_scene(folderPath: Path, image_res, vertex_colors, export_usd, objs=None):

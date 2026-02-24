@@ -88,13 +88,21 @@ def build_scene_asset(args, factory_name, idx):
         return
     with FixedSeed(idx):
         fac = fac(idx)
+        import time as _time
+        _t0 = _time.time()
         try:
             asset = fac.create_asset(i=idx, path=args.output_folder)
         except Exception as e:
             traceback.print_exc()
             print(f"{fac}.spawn_asset({idx=}) FAILED!! {e}")
             raise e
+        _t_create = _time.time() - _t0
+        print(f"[PROFILE] create_asset: {_t_create:.1f}s")
+        _t0 = _time.time()
         fac.finalize_assets(asset)
+        _t_finalize = _time.time() - _t0
+        print(f"[PROFILE] finalize_assets: {_t_finalize:.1f}s")
+        print(f"[PROFILE] GRAND TOTAL: {_t_create + _t_finalize:.1f}s")
         exit(0)
         if args.fire:
             from infinigen.assets.fluid.fluid import set_obj_on_fire

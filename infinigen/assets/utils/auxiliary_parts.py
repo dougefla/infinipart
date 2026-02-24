@@ -27,7 +27,7 @@ ALL_AUXILIARY_CATAGORY = [
     "lamp_base"
 ]
 
-AUXILIARY_PATH = "/home/pjlab/datasets/parts"
+AUXILIARY_PATH = "/mnt/data/yurh/Infinite-Mobility/parts/parts"
 
 LOADED_AUXILIARY = {}
 
